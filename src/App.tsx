@@ -1,5 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
+import { useNotification } from "./context/notifications";
+
+interface Item {
+  title: string;
+  state: State;
+}
 
 enum State {
   TODO = "to-do",
@@ -14,26 +20,58 @@ enum StateLabel {
 }
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
   const [state, setState] = useState<State>(
     State.TODO
   );
+  const [items, setItems] = useState<Item[]>([]);
 
-  async function greet() {
-    setGreetMsg(
-      await invoke("greet", { name, state })
+  const { addNotification } = useNotification();
+
+  useEffect(() => {
+    fetch().then((data) => setItems(data));
+  }, []);
+
+  async function fetch(): Promise<Item[]> {
+    const response = await invoke<string>(
+      "fetch"
     );
+    return JSON.parse(response);
+  }
+
+  async function add() {
+    await invoke("add", { name, state })
+      .then(() => fetch())
+      .then((data) => setItems(data))
+      .finally(() => {
+        setName("");
+        setState(State.TODO);
+        addNotification("Item added!", 3000);
+      });
   }
 
   async function clear() {
-    await invoke("clear");
-    setGreetMsg("Data is cleared out!");
+    await invoke("clear")
+      .then(() => fetch())
+      .then((data) => setItems(data))
+      .finally(() => {
+        setName("");
+        setState(State.TODO);
+        addNotification(
+          "Data is cleared out!",
+          3000
+        );
+      });
   }
 
   async function remove() {
-    await invoke("remove");
-    setGreetMsg("Database is removed!");
+    await invoke("remove").then(() => {
+      setItems([]);
+      addNotification(
+        "Database is removed!",
+        3000
+      );
+    });
   }
 
   return (
@@ -41,19 +79,20 @@ function App() {
       <h1>Welcome to TimeWise!</h1>
 
       <p>
-        Click on the Tauri, Vite, and React logos
-        to learn more.
+        Add your todos here and track their
+        progress.
       </p>
 
       <form
         className="row"
         onSubmit={(e) => {
           e.preventDefault();
-          greet();
+          add();
         }}
       >
         <input
           id="greet-input"
+          value={name}
           onChange={(e) =>
             setName(e.currentTarget.value)
           }
@@ -62,8 +101,8 @@ function App() {
         <select
           name="pets"
           id="pet-select"
+          value={state}
           onChange={(e) => {
-            console.log(e);
             setState(
               e.currentTarget.value as State
             );
@@ -78,7 +117,19 @@ function App() {
         <button type="submit">Greet</button>
       </form>
 
-      <p>{greetMsg}</p>
+      {items.length > 0 && (
+        <>
+          <h2>Items</h2>
+          <ul>
+            {items.map((item, index) => (
+              <li key={index}>
+                {item.title} -{" "}
+                {StateLabel[item.state]}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <button onClick={clear}>Clear</button>
       <button onClick={remove}>
