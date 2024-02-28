@@ -1,16 +1,18 @@
 use rusqlite::{named_params, Connection};
-use serde::{ser::SerializeStruct, Serialize};
 use std::fs;
 use tauri::AppHandle;
 
+use crate::item::Item;
+
 const CURRENT_DB_VERSION: u32 = 1;
+const DB_PATH: &str = "MyApp.sqlite";
 
 pub fn remove_database(app_handle: &AppHandle) {
     let app_dir = app_handle
         .path_resolver()
         .app_data_dir()
         .expect("The app data directory should exist.");
-    let sqlite_path = app_dir.join("MyApp.sqlite");
+    let sqlite_path = app_dir.join(DB_PATH);
     fs::remove_file(sqlite_path).expect("The database file should be removed.");
 }
 
@@ -20,7 +22,7 @@ pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, rusqlit
         .app_data_dir()
         .expect("The app data directory should exist.");
     fs::create_dir_all(&app_dir).expect("The app data directory should be created.");
-    let sqlite_path = app_dir.join("MyApp.sqlite");
+    let sqlite_path = app_dir.join(DB_PATH);
 
     let mut db = Connection::open(sqlite_path)?;
 
@@ -59,6 +61,14 @@ pub fn upgrade_database_if_needed(
 }
 
 pub fn add_item(title: &str, state: &str, db: &Connection) -> Result<(), rusqlite::Error> {
+    if let Ok(existing_item) = get_item(title, db) {
+        if existing_item.state != state {
+            update_item_state(title, state, db)?;
+        }
+
+        return Ok(());
+    }
+
     let mut statement = db.prepare("INSERT INTO items (title, state) VALUES (@title, @state)")?;
 
     statement.execute(named_params! {
@@ -96,33 +106,34 @@ pub fn clear_all(db: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+pub fn get_item(title: &str, db: &Connection) -> Result<Item, rusqlite::Error> {
+    let mut statement = db.prepare("SELECT * FROM items WHERE title = @title")?;
+    let mut rows = statement.query(named_params! {
+        "@title": title
+    })?;
+
+    if let Some(row) = rows.next()? {
+        return Ok(get_item_from_row(&row)?);
+    }
+
+    Err(rusqlite::Error::QueryReturnedNoRows)
+}
+
 pub fn get_all(db: &Connection) -> Result<Vec<Item>, rusqlite::Error> {
     let mut statement = db.prepare("SELECT * FROM items")?;
     let mut rows = statement.query([])?;
     let mut items = Vec::new();
     while let Some(row) = rows.next()? {
-        let title: String = row.get("title")?;
-        let state: String = row.get("state")?;
-
-        items.push(Item { title, state });
+        items.push(get_item_from_row(&row)?);
     }
 
     Ok(items)
 }
 
-pub struct Item {
-    pub title: String,
-    pub state: String,
-}
+fn get_item_from_row(row: &rusqlite::Row) -> Result<Item, rusqlite::Error> {
+    // descoped to updated for new versions of schema
+    let title: String = row.get("title")?;
+    let state: String = row.get("state")?;
 
-impl Serialize for Item {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("Item", 2)?;
-        state.serialize_field("title", &self.title)?;
-        state.serialize_field("state", &self.state)?;
-        state.end()
-    }
+    Ok(Item { title, state })
 }
