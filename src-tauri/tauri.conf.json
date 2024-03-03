@@ -19,9 +19,11 @@
     },
     "windows": [
       {
-        "title": "timewise",
+        "title": "",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "titleBarStyle": "Overlay",
+        "theme": "Light"
       }
     ],
     "security": {

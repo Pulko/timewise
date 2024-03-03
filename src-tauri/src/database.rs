@@ -130,6 +130,19 @@ pub fn get_all(db: &Connection) -> Result<Vec<Item>, rusqlite::Error> {
     Ok(items)
 }
 
+pub fn get_by_state(db: &Connection, state: &str) -> Result<Vec<Item>, rusqlite::Error> {
+    let mut statement = db.prepare("SELECT * FROM items WHERE state = @state")?;
+    let mut rows = statement.query(named_params! {
+        "@state": state
+    })?;
+    let mut items = Vec::new();
+    while let Some(row) = rows.next()? {
+        items.push(get_item_from_row(&row)?);
+    }
+
+    Ok(items)
+}
+
 fn get_item_from_row(row: &rusqlite::Row) -> Result<Item, rusqlite::Error> {
     // descoped to updated for new versions of schema
     let title: String = row.get("title")?;
